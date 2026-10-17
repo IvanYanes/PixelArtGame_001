@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PixelArt_Ve</title>
+    <title>Para Antonella</title>
     <!-- Fuente Pixel Art estilo Undertale -->
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
@@ -31,7 +31,7 @@
         }
         #gameWrapper {
             position: relative;
-            width: 95vw;
+            width: 98vw;
             max-width: 900px;
             display: flex;
             flex-direction: column;
@@ -56,45 +56,6 @@
             image-rendering: crisp-edges;
             cursor: pointer;
         }
-        /* Controles Táctiles para Teléfono */
-        #mobileControls {
-            display: none; /* Se activa en pantallas pequeñas o táctiles */
-            width: 100%;
-            margin-top: 14px;
-            padding: 0 10px;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 100;
-        }
-        .touch-btn {
-            background: rgba(20, 15, 30, 0.9);
-            border: 3px solid #ffffff;
-            color: #ffffff;
-            font-family: 'Press Start 2P', monospace;
-            font-size: 18px;
-            width: 46%;
-            height: 60px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border-radius: 8px;
-            touch-action: none;
-            outline: none;
-            box-shadow: 0 4px 0 #ffffff;
-        }
-        .touch-btn:active {
-            background: #ffffff;
-            color: #000000;
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #ffffff;
-        }
-
-        /* Regla Media Query para mostrar controles en dispositivos móviles / pantallas pequeñas */
-        @media (max-width: 900px), (pointer: coarse) {
-            #mobileControls {
-                display: flex !important;
-            }
-        }
     </style>
 </head>
 <body>
@@ -102,12 +63,6 @@
 <div id="gameWrapper">
     <div id="gameContainer">
         <canvas id="gameCanvas" width="900" height="450"></canvas>
-    </div>
-    
-    <!-- D-Pad para Celulares -->
-    <div id="mobileControls">
-        <button id="btnLeft" class="touch-btn">◄ IZQ</button>
-        <button id="btnRight" class="touch-btn">DER ►</button>
     </div>
 </div>
 
@@ -119,9 +74,6 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
-
-const btnLeft = document.getElementById('btnLeft');
-const btnRight = document.getElementById('btnRight');
 
 // --- SISTEMA DE AUDIO Y ESTADO DE INICIO ---
 const bgMusic = document.getElementById('bgMusic');
@@ -238,6 +190,7 @@ const groundY = 445;
 const player = {
     x: 95,
     y: groundY,
+    targetX: 95, // Destino objetivo para movimiento táctil
     width: 24,
     height: 48,
     speed: 3.5,
@@ -269,18 +222,6 @@ const keys = {};
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-// Eventos táctiles continuos para movimiento móvil
-let touchLeft = false;
-let touchRight = false;
-
-btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); touchLeft = true; });
-btnLeft.addEventListener('touchend', (e) => { e.preventDefault(); touchLeft = false; });
-btnLeft.addEventListener('touchcancel', (e) => { e.preventDefault(); touchLeft = false; });
-
-btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); touchRight = true; });
-btnRight.addEventListener('touchend', (e) => { e.preventDefault(); touchRight = false; });
-btnRight.addEventListener('touchcancel', (e) => { e.preventDefault(); touchRight = false; });
-
 function handleCanvasInteraction(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -289,9 +230,16 @@ function handleCanvasInteraction(clientX, clientY) {
     const clickX = (clientX - rect.left) * scaleX;
     const clickY = (clientY - rect.top) * scaleY;
 
-    if (currentScene === 'ROOM') {
-        if (!player.isAwake) return; 
+    // Si aún no está despierta, el toque la despierta
+    if (!player.isAwake) {
+        startExperience();
+        return;
+    }
 
+    // Establecer el destino de caminata en el piso
+    player.targetX = clickX;
+
+    if (currentScene === 'ROOM') {
         if (clickX >= 380 && clickX <= 440 && clickY >= 320 && clickY <= 420) {
             if (Math.abs(player.x - 430) < 130) showPopup("oh che");
             else showPopup("Acércate más a la foto del Che...");
@@ -404,14 +352,28 @@ function update() {
 
     if (currentScene !== 'LOOKOUT' || cutsceneState === 'WALKING_IN') {
         player.moving = false;
-        if (keys['ArrowRight'] || keys['d'] || keys['D'] || touchRight) {
+
+        // Movimiento por Teclado (PC)
+        if (keys['ArrowRight'] || keys['d'] || keys['D']) {
             player.x += player.speed;
+            player.targetX = player.x;
             player.direction = 'right';
             player.moving = true;
-        }
-        if (keys['ArrowLeft'] || keys['a'] || keys['A'] || touchLeft) {
+        } else if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
             player.x -= player.speed;
+            player.targetX = player.x;
             player.direction = 'left';
+            player.moving = true;
+        } 
+        // Movimiento Táctil por Toque (Celular)
+        else if (Math.abs(player.x - player.targetX) > 4) {
+            if (player.targetX > player.x) {
+                player.x += player.speed;
+                player.direction = 'right';
+            } else {
+                player.x -= player.speed;
+                player.direction = 'left';
+            }
             player.moving = true;
         }
     }
@@ -427,6 +389,7 @@ function update() {
         if (player.x > canvas.width - 40) {
             currentScene = 'FOREST';
             player.x = 50;
+            player.targetX = 50;
             activePopup.timer = 0;
             charIndex = 0;
             displayedText = "";
@@ -439,6 +402,7 @@ function update() {
         if (player.x < 30) {
             currentScene = 'ROOM';
             player.x = canvas.width - 60;
+            player.targetX = canvas.width - 60;
             hasShownExitMessage = false;
             activePopup.timer = 0;
             
@@ -448,6 +412,7 @@ function update() {
         if (player.x > canvas.width - 40) {
             currentScene = 'LOOKOUT';
             player.x = 50;
+            player.targetX = 50;
             cutsceneState = 'WALKING_IN';
             starIntensity = 0;
             activePopup.timer = 0;
@@ -473,6 +438,7 @@ function update() {
         if (player.x < 30 && cutsceneState === 'WALKING_IN') {
             currentScene = 'FOREST';
             player.x = canvas.width - 60;
+            player.targetX = canvas.width - 60;
             playTrack(scenaryTwoMusic, false);
         }
 
