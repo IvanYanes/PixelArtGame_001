@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Para Antonella</title>
+    <!-- Fuente Pixel Art estilo Undertale -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #0d0814;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            color: #fff;
+        }
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+            border: 4px solid #ffffff;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <canvas id="gameCanvas" width="900" height="450"></canvas>
+</div>
+
+<!-- Audios Locales -->
+<audio id="bgMusic" src="musicbackground.mp3" loop></audio>
+<audio id="scenaryTwoMusic" src="musicScenaryTwo.mp3"></audio>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// --- SISTEMA DE AUDIO Y ESTADO DE INICIO ---
+const bgMusic = document.getElementById('bgMusic');
+const scenaryTwoMusic = document.getElementById('scenaryTwoMusic');
+let audioStarted = false;
+let currentPlayingTrack = null;
+
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+
+function initAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+function playTrack(track, loop = true) {
+    if (currentPlayingTrack === track && !track.paused) return;
+    
+    if (currentPlayingTrack) {
+        currentPlayingTrack.pause();
+        currentPlayingTrack.currentTime = 0;
+    }
+    
+    currentPlayingTrack = track;
+    track.loop = loop;
+    track.play().catch(err => console.log("Esperando interacción de usuario para audio..."));
+}
+
+function playTextSound() {
+    if (!audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(160 + Math.random() * 20, audioCtx.currentTime);
+        
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.04);
+    } catch(e) {}
+}
+
+// Al finalizar musicScenaryTwo.mp3, vuelve automáticamente a la música de fondo
+scenaryTwoMusic.addEventListener('ended', () => {
+    if (currentScene === 'FOREST') {
+        playTrack(bgMusic, true);
+    }
+});
+
+// Eventos globales para iniciar la experiencia por obligación del navegador
+function startExperience() {
+    if (!audioStarted) {
+        audioStarted = true;
+        initAudioContext();
+        playTrack(bgMusic, true);
+    }
+}
+
+window.addEventListener('click', startExperience);
+window.addEventListener('keydown', startExperience);
+
+const roomImg = new Image();
+roomImg.src = 'habitacion.png';
+
+const skyMessages = [
+    "✨ Vecchi, mira lo bonito que brilla la luna para ti ✨",
+    "Hay palabras que hay que mantener lejos del olvido",
+    "'Lo esencial es invisible a los ojos'... dice cierto niño de ropas verdes y cabello amarillo",
+    "A veces lo esencial es comer un pinguinito con la persona correcta...",
+    "O que no te importe que te interrumpan porque asi es el afecto para algunos...",
+    "Quizá ensoñar banquetes de no muy buena calidad...",
+    "Hablar de los días buenos, y de los no tan buenos...",
+    "Y muy importante",
+    "...",
+    "Querer que una estrella este bien...",
+    "Aunque este a kilometros de distancia",
+    "⭐",
+    "Aunque algunas persona no tengan ciertas creencias...",
+    "No pueden negar que hay cosas inexplicables en el universo frente a ellos...",
+    "Como, sino, viviendo en mundos separados...",
+    "Apartados por los años...",
+    "Divididos siempre por la distancia...",
+    "Pueden convertirse en esa estrella que no puede faltar al poner los ojos en el cielo...",
+    "Cuál era la posibilidad?",
+    "No lo se. Pero me alegro asi haya sido...",
+    "Una última cosa...",
+    "...",
+    "...",
+    "...",
+    "Don Julián es lo máximo.",
+    "Te espero mas adelante.",
+    "Aunque... No hay prisa...",
+    "Disfruta de la música y la noche."
+];
+
+let currentMessageIndex = 0;
+let skyDialogueFinished = false; // Bandera para ocultar el cuadro al terminar
+let currentScene = 'ROOM';
+let hasClickedSky = false;
+
+let displayedText = "";
+let charIndex = 0;
+let textTimer = 0;
+const textSpeed = 2;
+
+const groundY = 445; 
+
+const player = {
+    x: 95,
+    y: groundY,
+    width: 24,
+    height: 48,
+    speed: 3.5,
+    isAwake: false,
+    wakeTimer: 0,
+    moving: false,
+    direction: 'right'
+};
+
+const partner = {
+    x: 680,
+    y: groundY,
+    width: 24,
+    height: 48,
+    direction: 'left'
+};
+
+let cutsceneState = 'WALKING_IN';
+let starIntensity = 0; // Control de la ignición de la estrella especial
+let activePopup = { text: '', timer: 0 };
+let hasShownExitMessage = false;
+
+function showPopup(text, duration = 180) {
+    activePopup.text = text;
+    activePopup.timer = duration;
+}
+
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+
+    if (currentScene === 'ROOM') {
+        if (!player.isAwake) return; 
+
+        if (clickX >= 380 && clickX <= 440 && clickY >= 320 && clickY <= 420) {
+            if (Math.abs(player.x - 430) < 130) showPopup("ooooooh... Hola Che");
+            else showPopup("Acércate más a la foto del Che...");
+        } else if (clickX > 440 && clickX <= 510 && clickY >= 320 && clickY <= 440) {
+            if (Math.abs(player.x - 475) < 130) showPopup("No hay luz otra vez????");
+            else showPopup("Acércate más a la laptop...");
+        } else if (clickX >= 240 && clickX <= 330 && clickY >= 330 && clickY <= 440) {
+            if (Math.abs(player.x - 280) < 130) showPopup("Pabel mis cholas!! No otra vez, Naguara, chamo");
+            else showPopup("Acércate a Pabel para hablarle...");
+        } else if (clickX >= 650 && clickX <= 820 && clickY >= 200 && clickY <= 310) {
+            if (Math.abs(player.x - 735) < 130) showPopup("Ojala alcanzara el televisor...");
+            else showPopup("Acércate más al mueble...");
+        } else if (clickX >= 650 && clickX <= 820 && clickY > 310 && clickY <= 440) {
+            if (Math.abs(player.x - 735) < 130) showPopup("Si pabel rompe mis botellas coleccionadas lo mato!!!!");
+            else showPopup("Acércate más a las botellas...");
+        }
+    } else if (currentScene === 'FOREST') {
+        hasClickedSky = true;
+
+        // Si el diálogo ya terminó, solo crea partículas de estrellas al hacer clic
+        if (skyDialogueFinished) {
+            createClickStars(clickX, clickY);
+            return;
+        }
+
+        const fullMsg = skyMessages[currentMessageIndex];
+
+        if (charIndex < fullMsg.length) {
+            charIndex = fullMsg.length;
+            displayedText = fullMsg;
+        } else {
+            currentMessageIndex++;
+            if (currentMessageIndex < skyMessages.length) {
+                charIndex = 0;
+                displayedText = "";
+            } else {
+                skyDialogueFinished = true; // Se oculta el cuadro al pasar la última línea
+            }
+        }
+        createClickStars(clickX, clickY);
+    }
+});
+
+const stars = Array.from({ length: 110 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * (canvas.height * 0.65),
+    size: Math.random() * 2 + 1,
+    alpha: Math.random(),
+    speed: Math.random() * 0.02 + 0.01
+}));
+
+const raindrops = Array.from({ length: 70 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    length: Math.random() * 12 + 8,
+    speed: Math.random() * 6 + 10
+}));
+
+let clickParticles = [];
+function createClickStars(x, y) {
+    for (let i = 0; i < 12; i++) {
+        clickParticles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            life: 1,
+            color: '#ffd700'
+        });
+    }
+}
+
+function updateRain() {
+    raindrops.forEach(drop => {
+        drop.y += drop.speed;
+        drop.x -= 1.5;
+        if (drop.y > canvas.height) {
+            drop.y = -10;
+            drop.x = Math.random() * (canvas.width + 100);
+        }
+    });
+}
+
+function drawRain() {
+    ctx.strokeStyle = 'rgba(174, 194, 224, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    raindrops.forEach(drop => {
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(drop.x - 2, drop.y + drop.length);
+    });
+    ctx.stroke();
+}
+
+function update() {
+    if (activePopup.timer > 0) activePopup.timer--;
+
+    if (!player.isAwake) {
+        if (audioStarted) {
+            player.wakeTimer++;
+            if (player.wakeTimer > 40) player.isAwake = true;
+        }
+        return;
+    }
+
+    if (currentScene !== 'LOOKOUT' || cutsceneState === 'WALKING_IN') {
+        player.moving = false;
+        if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+            player.x += player.speed;
+            player.direction = 'right';
+            player.moving = true;
+        }
+        if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+            player.x -= player.speed;
+            player.direction = 'left';
+            player.moving = true;
+        }
+    }
+
+    if (currentScene === 'ROOM') {
+        if (player.x < 30) player.x = 30;
+
+        if (player.x > 810 && !hasShownExitMessage) {
+            showPopup("Oh, espera! Antes de que salgas... Te ves muy linda con esa pijama", 220);
+            hasShownExitMessage = true;
+        }
+
+        if (player.x > canvas.width - 40) {
+            currentScene = 'FOREST';
+            player.x = 50;
+            activePopup.timer = 0;
+            charIndex = 0;
+            displayedText = "";
+            skyDialogueFinished = false;
+            currentMessageIndex = 0;
+            
+            playTrack(scenaryTwoMusic, false);
+        }
+    } else if (currentScene === 'FOREST') {
+        if (player.x < 30) {
+            currentScene = 'ROOM';
+            player.x = canvas.width - 60;
+            hasShownExitMessage = false;
+            activePopup.timer = 0;
+            
+            playTrack(bgMusic, true);
+        }
+
+        if (player.x > canvas.width - 40) {
+            currentScene = 'LOOKOUT';
+            player.x = 50;
+            cutsceneState = 'WALKING_IN';
+            starIntensity = 0;
+            activePopup.timer = 0;
+            
+            playTrack(bgMusic, true);
+        }
+
+        if (!skyDialogueFinished) {
+            const fullMsg = skyMessages[currentMessageIndex];
+            if (charIndex < fullMsg.length) {
+                textTimer++;
+                if (textTimer >= textSpeed) {
+                    textTimer = 0;
+                    charIndex++;
+                    displayedText = fullMsg.substring(0, charIndex);
+                    if (fullMsg[charIndex - 1] !== ' ') playTextSound();
+                }
+            }
+        }
+
+        updateRain();
+    } else if (currentScene === 'LOOKOUT') {
+        if (player.x < 30 && cutsceneState === 'WALKING_IN') {
+            currentScene = 'FOREST';
+            player.x = canvas.width - 60;
+            playTrack(scenaryTwoMusic, false);
+        }
+
+        if (cutsceneState === 'WALKING_IN' && player.x >= 580) {
+            cutsceneState = 'APPROACHING';
+        }
+
+        if (cutsceneState === 'APPROACHING') {
+            player.moving = true;
+            player.direction = 'right';
+            if (starIntensity < 1) starIntensity += 0.015;
+
+            if (player.x < 645) {
+                player.x += 1.2;
+            } else {
+                player.moving = false;
+                cutsceneState = 'SITTING';
+                showPopup("Siempre será lindo ver las estrellas mientras hablamos", 600);
+            }
+        }
+
+        if (cutsceneState === 'SITTING') {
+            if (starIntensity < 1) starIntensity += 0.02;
+        }
+
+        updateRain();
+    }
+
+    clickParticles.forEach((p, index) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.03;
+        if (p.life <= 0) clickParticles.splice(index, 1);
+    });
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (currentScene === 'ROOM') {
+        drawRoomScene();
+        if (!player.isAwake) drawSleepingOnBed();
+        else drawPlayer();
+    } else if (currentScene === 'FOREST') {
+        drawForestScene();
+        drawPlayer();
+    } else if (currentScene === 'LOOKOUT') {
+        drawLookoutScene();
+        drawLookoutCharacters();
+    }
+
+    if (currentScene === 'ROOM') {
+        if (!player.isAwake) {
+            drawSpeechBubble(player.x - 10, player.y - player.height - 10, "Zzz... 💭");
+            drawStartOverlay();
+        } else if (player.x < 210) {
+            drawSpeechBubble(player.x - 20, player.y - player.height - 10, "Me antoje de un Glup 2L y un pinguinito... 🐧");
+        }
+    }
+
+    if (activePopup.timer > 0) {
+        drawCenterPopup(activePopup.text);
+    }
+
+    clickParticles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fillRect(p.x, p.y, 3, 3);
+        ctx.globalAlpha = 1.0;
+    });
+}
+
+function drawStartOverlay() {
+    ctx.font = '9px "Press Start 2P", monospace';
+    const text = "Haz clic para comenzar ✨";
+    const textWidth = ctx.measureText(text).width;
+    const x = canvas.width / 2 - textWidth / 2;
+    const y = 80;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x - 16, y - 18, textWidth + 32, 40);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - 16, y - 18, textWidth + 32, 40);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, x, y + 6);
+}
+
+function drawRoomScene() {
+    if (roomImg.complete && roomImg.naturalWidth !== 0) {
+        ctx.drawImage(roomImg, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.fillStyle = '#221c35';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px "Press Start 2P", monospace';
+        ctx.fillText("Cargando habitacion.png...", 20, 30);
+    }
+}
+
+function drawSleepingOnBed() {
+    const px = player.x;
+    const py = groundY - 20;
+
+    ctx.save();
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(px, py + 4, 18, 14);
+    ctx.fillStyle = '#fcd5ce';
+    ctx.fillRect(px + 4, py + 6, 12, 10);
+    ctx.fillStyle = '#ffb3c6';
+    ctx.fillRect(px + 12, py + 5, 20, 12);
+    ctx.restore();
+}
+
+function drawForestScene() {
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, '#0a051b');
+    grad.addColorStop(0.6, '#180e2e');
+    grad.addColorStop(1, '#2c163b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    stars.forEach(s => {
+        s.alpha += s.speed;
+        if (s.alpha > 1 || s.alpha < 0) s.speed = -s.speed;
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.abs(s.alpha)})`;
+        ctx.fillRect(s.x, s.y, s.size, s.size);
+    });
+
+    drawRain();
+
+    ctx.fillStyle = '#fffde8';
+    ctx.beginPath();
+    ctx.arc(780, 80, 28, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#0f0a1c';
+    drawTrees(0.7);
+    ctx.fillStyle = '#07040d';
+    drawTrees(1);
+
+    ctx.fillStyle = '#0c1510';
+    ctx.fillRect(0, groundY - 5, canvas.width, canvas.height - (groundY - 5));
+    ctx.fillStyle = '#1c3022';
+    ctx.fillRect(0, groundY - 5, canvas.width, 6);
+
+    drawSkyMessage();
+}
+
+function drawLookoutScene() {
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, '#04020d');
+    grad.addColorStop(0.5, '#120a28');
+    grad.addColorStop(1, '#23123d');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    stars.forEach(s => {
+        s.alpha += s.speed;
+        if (s.alpha > 1 || s.alpha < 0) s.speed = -s.speed;
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.abs(s.alpha)})`;
+        ctx.fillRect(s.x, s.y, s.size, s.size);
+    });
+
+    drawRain();
+
+    // Luna Llena
+    ctx.fillStyle = 'rgba(255, 253, 232, 0.15)';
+    ctx.beginPath();
+    ctx.arc(450, 140, 60, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fffde8';
+    ctx.beginPath();
+    ctx.arc(450, 140, 42, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- ESTRELLA ESPECIAL RESPLANDECIENTE ---
+    const starX = 520;
+    const starY = 75;
+    const basePulse = Math.sin(Date.now() * 0.004) * 0.2 + 0.8;
+    const currentGlow = (0.2 + starIntensity * 0.8) * basePulse;
+
+    const auraGrad = ctx.createRadialGradient(starX, starY, 2, starX, starY, 15 + starIntensity * 25);
+    auraGrad.addColorStop(0, `rgba(255, 230, 120, ${0.9 * currentGlow})`);
+    auraGrad.addColorStop(0.4, `rgba(255, 215, 0, ${0.4 * currentGlow})`);
+    auraGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(starX, starY, 15 + starIntensity * 25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 5 + starIntensity * 15;
+
+    const armLen = 6 + starIntensity * 9;
+    ctx.beginPath();
+    ctx.fillRect(starX - 1, starY - armLen, 3, armLen * 2 + 1);
+    ctx.fillRect(starX - armLen, starY - 1, armLen * 2 + 1, 3);
+    ctx.fillStyle = '#fff6b3';
+    ctx.fillRect(starX - 2, starY - 2, 5, 5);
+    ctx.restore();
+
+    ctx.fillStyle = '#0a120e';
+    ctx.beginPath();
+    ctx.moveTo(0, groundY - 5);
+    ctx.quadraticCurveTo(450, groundY - 40, canvas.width, groundY - 5);
+    ctx.lineTo(canvas.width, canvas.height);
+    ctx.lineTo(0, canvas.height);
+    ctx.fill();
+
+    ctx.strokeStyle = '#1c3022';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, groundY - 5);
+    ctx.quadraticCurveTo(450, groundY - 40, canvas.width, groundY - 5);
+    ctx.stroke();
+}
+
+function drawLookoutCharacters() {
+    if (cutsceneState !== 'SITTING') {
+        drawPlayer();
+
+        const px = partner.x;
+        const py = partner.y - partner.height - 15;
+        ctx.save();
+        ctx.fillStyle = '#1a100c';
+        ctx.fillRect(px + 2, py + 2, 20, 16);
+        ctx.fillStyle = '#fcd5ce';
+        ctx.fillRect(px + 4, py + 8, 14, 12);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(px + 6, py + 11, 3, 4);
+        ctx.fillStyle = '#722f37';
+        ctx.fillRect(px + 4, py + 20, 16, 16);
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(px + 5, py + 36, 6, 12);
+        ctx.fillRect(px + 13, py + 36, 6, 12);
+        ctx.restore();
+    } else {
+        const sitX = 640;
+        const sitY = groundY - 32;
+
+        ctx.save();
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(sitX, sitY - 18, 18, 22);
+        ctx.fillStyle = '#ffb3c6';
+        ctx.fillRect(sitX + 2, sitY + 4, 14, 14);
+        ctx.fillStyle = '#ff8fab';
+        ctx.fillRect(sitX, sitY + 18, 18, 8);
+        ctx.restore();
+
+        const pSitX = sitX + 18;
+        ctx.save();
+        ctx.fillStyle = '#1a100c';
+        ctx.fillRect(pSitX, sitY - 20, 18, 18);
+        ctx.fillStyle = '#722f37';
+        ctx.fillRect(pSitX + 2, sitY - 2, 16, 18);
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(pSitX + 2, sitY + 16, 16, 8);
+        ctx.restore();
+    }
+}
+
+function drawTrees(scale) {
+    const treePositions = [60, 180, 320, 480, 620, 750, 860];
+    treePositions.forEach(x => {
+        const h = 160 * scale;
+        const w = 40 * scale;
+        ctx.fillRect(x - w / 4, groundY - 5 - h, w / 2, h);
+        ctx.beginPath();
+        ctx.arc(x, groundY - 5 - h + 20, w, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+function drawSkyMessage() {
+    if (skyDialogueFinished) return; // Se oculta al terminar la última línea
+
+    ctx.font = '9px "Press Start 2P", monospace';
+    
+    const fullMsg = skyMessages[currentMessageIndex];
+    const textWidth = ctx.measureText(fullMsg).width;
+    const x = canvas.width / 2 - textWidth / 2;
+    const y = 60;
+    const padding = 16;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x - padding, y - 18, textWidth + padding * 2, 38);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - padding, y - 18, textWidth + padding * 2, 38);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(displayedText, x, y + 5);
+
+    if (!hasClickedSky) {
+        ctx.font = '7px "Press Start 2P", monospace';
+        ctx.fillStyle = '#aaaaaa';
+        const hintMsg = "(Haz clic en el cielo para cambiar de mensaje ✨)";
+        const hintWidth = ctx.measureText(hintMsg).width;
+        ctx.fillText(hintMsg, canvas.width / 2 - hintWidth / 2, y + 36);
+    }
+}
+
+function drawPlayer() {
+    const px = player.x;
+    const py = player.y - player.height;
+
+    ctx.save();
+    if (player.direction === 'left') {
+        ctx.translate(px + player.width / 2, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-(px + player.width / 2), 0);
+    }
+
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(px + 2, py + 4, 20, 26);
+
+    ctx.fillStyle = '#fcd5ce';
+    ctx.fillRect(px + 5, py + 8, 14, 12);
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + 13, py + 11, 3, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px + 14, py + 11, 1, 1);
+
+    ctx.fillStyle = '#ffb3c6';
+    ctx.fillRect(px + 4, py + 20, 16, 16);
+
+    ctx.fillStyle = '#ff8fab';
+    const legOffset = player.moving ? Math.sin(Date.now() * 0.012) * 3 : 0;
+    ctx.fillRect(px + 5, py + 36, 6, 12 + legOffset);
+    ctx.fillRect(px + 13, py + 36, 6, 12 - legOffset);
+
+    ctx.restore();
+}
+
+function drawSpeechBubble(x, y, text) {
+    ctx.font = '8px "Press Start 2P", monospace';
+    const padding = 10;
+    const w = ctx.measureText(text).width + padding * 2;
+    const h = 26;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, x + padding, y + 16);
+}
+
+function drawCenterPopup(text) {
+    ctx.font = '9px "Press Start 2P", monospace';
+    const padding = 16;
+    const w = ctx.measureText(text).width + padding * 2;
+    const h = 42;
+    const x = canvas.width / 2 - w / 2;
+    const y = 80;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, x + padding, y + 26);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
