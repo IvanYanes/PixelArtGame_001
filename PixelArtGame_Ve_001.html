@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Para Antonella</title>
+    <title>PixelArt_Ve</title>
     <!-- Fuente Pixel Art estilo Undertale -->
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
@@ -31,7 +31,7 @@
         }
         #gameWrapper {
             position: relative;
-            width: 100vw;
+            width: 95vw;
             max-width: 900px;
             display: flex;
             flex-direction: column;
@@ -56,12 +56,12 @@
             image-rendering: crisp-edges;
             cursor: pointer;
         }
-        /* Controles Táctiles para Celular */
+        /* Controles Táctiles para Teléfono */
         #mobileControls {
-            display: flex;
+            display: none; /* Se activa en pantallas pequeñas o táctiles */
             width: 100%;
-            margin-top: 12px;
-            padding: 0 20px;
+            margin-top: 14px;
+            padding: 0 10px;
             justify-content: space-between;
             align-items: center;
             z-index: 100;
@@ -71,8 +71,8 @@
             border: 3px solid #ffffff;
             color: #ffffff;
             font-family: 'Press Start 2P', monospace;
-            font-size: 20px;
-            width: 45%;
+            font-size: 18px;
+            width: 46%;
             height: 60px;
             display: flex;
             justify-content: center;
@@ -87,6 +87,13 @@
             color: #000000;
             transform: translateY(2px);
             box-shadow: 0 2px 0 #ffffff;
+        }
+
+        /* Regla Media Query para mostrar controles en dispositivos móviles / pantallas pequeñas */
+        @media (max-width: 900px), (pointer: coarse) {
+            #mobileControls {
+                display: flex !important;
+            }
         }
     </style>
 </head>
